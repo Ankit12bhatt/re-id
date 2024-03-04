@@ -77,9 +77,11 @@ class TripletLoss(nn.Module):
         dist_ap, dist_an = [], []
         for i in range(n):
             dist_ap.append(dist[i][mask[i]].max())
-            dist_an.append(dist[i][mask[i] == 0].min())
-        dist_ap = torch.cat(dist_ap)
-        dist_an = torch.cat(dist_an)
+            if len(dist[i][mask[i] == 0]) > 0:  # Check if there are negative samples
+                dist_an.append(dist[i][mask[i] == 0].min())
+        if len(dist_an) == 0:
+            return torch.tensor(0.0, device=inputs.device)
+        dist_an = torch.stack(dist_an)
         # Compute ranking hinge loss
         y = dist_an.data.new()
         y.resize_as_(dist_an.data)

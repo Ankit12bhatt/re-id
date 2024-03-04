@@ -50,3 +50,12 @@ Other detailed settings for different temporal modeling could be found in `model
 | attention    |  76.7 | 83.3 | 93.8 | 96.0 | 97.4 |
 | rnn    |   73.9 | 81.6 | 92.8 | 94.7 | 96.3 |
 | 3d conv    |  70.5 | 78.5 | 90.9 | 93.9 | 95.9 |
+
+
+# install this pip 
+pip install torch==1.8.0+cu101 torchvision==0.9.0+cu101 torchaudio===0.8.0 -f https://download.pytorch.org/whl/torch_stable.html
+
+# create 
+- create a folder name data
+- upload mars data
+- data should be in this format (bbox_test, bbox_train and info)

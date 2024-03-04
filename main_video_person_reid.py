@@ -13,18 +13,17 @@ import torch.backends.cudnn as cudnn
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
 from torch.optim import lr_scheduler
+from torchvision import transforms as T
 
 import data_manager
 from video_loader import VideoDataset
-import transforms as T
 import models
-from models import resnet3d
 from losses import CrossEntropyLabelSmooth, TripletLoss
 from utils import AverageMeter, Logger, save_checkpoint
 from eval_metrics import evaluate
 from samplers import RandomIdentitySampler
 
-parser = argparse.ArgumentParser(description='Train video model with cross entropy loss')
+parser = argparse.ArgumentParser(description='Train video model with cross-entropy loss')
 # Datasets
 parser.add_argument('-d', '--dataset', type=str, default='mars',
                     choices=data_manager.get_names())
@@ -36,11 +35,11 @@ parser.add_argument('--width', type=int, default=112,
                     help="width of an image (default: 112)")
 parser.add_argument('--seq-len', type=int, default=4, help="number of images to sample in a tracklet")
 # Optimization options
-parser.add_argument('--max-epoch', default=800, type=int,
+parser.add_argument('--max-epoch', default=1, type=int,
                     help="maximum epochs to run")
 parser.add_argument('--start-epoch', default=0, type=int,
                     help="manual epoch number (useful on restarts)")
-parser.add_argument('--train-batch', default=32, type=int,
+parser.add_argument('--train-batch', default=1, type=int,
                     help="train batch size")
 parser.add_argument('--test-batch', default=1, type=int, help="has to be 1")
 parser.add_argument('--lr', '--learning-rate', default=0.0003, type=float,
@@ -77,6 +76,7 @@ def main():
     torch.manual_seed(args.seed)
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_devices
     use_gpu = torch.cuda.is_available()
+    # use_gpu = False
     if args.use_cpu: use_gpu = False
 
     if not args.evaluate:
@@ -96,23 +96,22 @@ def main():
     dataset = data_manager.init_dataset(name=args.dataset)
 
     transform_train = T.Compose([
-        T.Random2DTranslation(args.height, args.width),
-        T.RandomHorizontalFlip(),
-        T.ToTensor(),
-        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    T.RandomResizedCrop(size=(args.height, args.width)),
+    T.RandomHorizontalFlip(),
+    T.ToTensor(),
+    T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
     transform_test = T.Compose([
-        T.Resize((args.height, args.width)),
-        T.ToTensor(),
-        T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    T.Resize((args.height, args.width)),
+    T.ToTensor(),
+    T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
     pin_memory = True if use_gpu else False
 
-
     trainloader = DataLoader(
-        VideoDataset(dataset.train, seq_len=args.seq_len, sample='random',transform=transform_train),
+        VideoDataset(dataset.train, seq_len=args.seq_len, sample='random', transform=transform_train),
         sampler=RandomIdentitySampler(dataset.train, num_instances=args.num_instances),
         batch_size=args.train_batch, num_workers=args.workers,
         pin_memory=pin_memory, drop_last=True,
@@ -213,11 +212,14 @@ def train(model, criterion_xent, criterion_htri, optimizer, trainloader, use_gpu
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-        losses.update(loss.data[0], pids.size(0))
+        losses.update(loss.data, pids.size(0))
 
         if (batch_idx+1) % args.print_freq == 0:
             print("Batch {}/{}\t Loss {:.6f} ({:.6f})".format(batch_idx+1, len(trainloader), losses.val, losses.avg))
 
+    # Clear GPU memory
+    del imgs, pids, outputs, features, loss
+    torch.cuda.empty_cache()
 def test(model, queryloader, galleryloader, pool, use_gpu, ranks=[1, 5, 10, 20]):
     model.eval()
 
@@ -261,6 +263,8 @@ def test(model, queryloader, galleryloader, pool, use_gpu, ranks=[1, 5, 10, 20])
         gf.append(features)
         g_pids.extend(pids)
         g_camids.extend(camids)
+        del imgs, features
+        torch.cuda.empty_cache()
     gf = torch.stack(gf)
     g_pids = np.asarray(g_pids)
     g_camids = np.asarray(g_camids)
@@ -288,10 +292,3 @@ def test(model, queryloader, galleryloader, pool, use_gpu, ranks=[1, 5, 10, 20])
 
 if __name__ == '__main__':
     main()
-
-
-
-
-
-
-
